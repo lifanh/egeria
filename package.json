@@ -1,0 +1,22 @@
+{
+  "name": "egeria",
+  "module": "src/main.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run src/main.ts",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@ai-sdk/google-vertex": "^4.0.126",
+    "ai": "^6.0.177",
+    "effect": "^3.21.2",
+    "zod": "^4.4.3"
+  }
+}

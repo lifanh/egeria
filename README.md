@@ -47,7 +47,7 @@ src/
 
 - ✅ Milestone 0: hardcoded prompt → model response via `bun run dev`
 - ✅ Milestone 1: tool system + writeNote (with path safety + tests)
-- ⬜ Milestone 2: conversation state
+- ✅ Milestone 2: conversation state (CLI chat loop + capped history + tests)
 - ⬜ Milestone 3: planning and tool calling
 - ⬜ Milestone 4: long-term memory retrieval
 - ⬜ Milestone 5: reliability pass

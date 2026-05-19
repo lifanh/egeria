@@ -8,5 +8,7 @@ export {
   type LlmMessage,
   type LlmRequest,
   type LlmResponse,
+  type LlmStep,
+  type LlmTool,
 } from "./LlmClient.ts";
 export { LlmLive } from "./internal/aisdkClient.ts";

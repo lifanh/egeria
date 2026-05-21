@@ -1,6 +1,7 @@
 import { Duration, Effect, Layer } from "effect";
 import { z } from "zod";
 import { ConfigTag } from "../../config/index.ts";
+import { MemoryTag } from "../../memory/index.ts";
 import { ToolError } from "../../shared/errors.ts";
 import {
   ToolServiceTag,
@@ -8,6 +9,8 @@ import {
   type ToolInfo,
   type ToolService,
 } from "../Tool.ts";
+import { buildReadNotes } from "./readNotes.ts";
+import { buildSearchNotes } from "./searchNotes.ts";
 import { buildWriteNote } from "./writeNote.ts";
 
 /**
@@ -81,14 +84,19 @@ const buildRegistry = (
 };
 
 /**
- * Default Live registry: writeNote bound to the configured notes dir.
- * readNotes/searchNotes will join here in Milestone 4.
+ * Default Live registry: writeNote, readNotes, searchNotes — all
+ * backed by the Memory service.
  */
 export const ToolsLive = Layer.effect(
   ToolServiceTag,
   Effect.gen(function* () {
     const config = yield* ConfigTag;
-    const tools: AnyTool[] = [buildWriteNote(config.notesDir)];
+    const memory = yield* MemoryTag;
+    const tools: AnyTool[] = [
+      buildWriteNote(memory),
+      buildReadNotes(memory),
+      buildSearchNotes(memory),
+    ];
     return buildRegistry(tools, config.toolTimeoutMs);
   }),
 );

@@ -1,13 +1,7 @@
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
 import { Effect } from "effect";
+import type { Memory } from "../../memory/index.ts";
 import { ToolError } from "../../shared/errors.ts";
 import type { ToolDefinition } from "../Tool.ts";
-import {
-  assertContentSize,
-  normalizeFilename,
-  resolveSafePath,
-} from "./safety.ts";
 import {
   writeNoteInput,
   type WriteNoteInput,
@@ -17,12 +11,12 @@ import {
 const TOOL = "writeNote";
 
 /**
- * Build the writeNote tool bound to a notes directory. Defining tools
- * as factories keeps configuration injection explicit and makes
- * testing trivial.
+ * Tool wrapper around `Memory.remember`. The memory module owns the
+ * notes directory, filename normalization, and size limits; this tool
+ * just adapts the call shape for the LLM.
  */
 export const buildWriteNote = (
-  notesDir: string,
+  memory: Memory,
 ): ToolDefinition<WriteNoteInput, WriteNoteOutput> => ({
   name: TOOL,
   description:
@@ -30,23 +24,12 @@ export const buildWriteNote = (
     "Filename is normalized; content is plain Markdown.",
   inputSchema: writeNoteInput,
   execute: (input) =>
-    Effect.tryPromise({
-      try: async () => {
-        const safeName = normalizeFilename(input.filename, TOOL);
-        const target = resolveSafePath(notesDir, safeName, TOOL);
-        assertContentSize(input.content, TOOL);
-        await mkdir(dirname(target), { recursive: true });
-        await Bun.write(target, input.content);
-        const bytes = Buffer.byteLength(input.content, "utf8");
-        return { path: target, bytes } satisfies WriteNoteOutput;
-      },
-      catch: (cause) => {
-        if (cause instanceof ToolError) return cause;
-        return new ToolError({
-          tool: TOOL,
-          message: cause instanceof Error ? cause.message : String(cause),
-          cause,
-        });
-      },
-    }),
+    memory
+      .remember({ title: input.filename, content: input.content })
+      .pipe(
+        Effect.mapError(
+          (cause) =>
+            new ToolError({ tool: TOOL, message: cause.message, cause }),
+        ),
+      ),
 });

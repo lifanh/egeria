@@ -5,6 +5,7 @@ import {
   type LlmClient,
   type LlmTool,
 } from "../../llm/index.ts";
+import { MemoryTag, type Memory, type RecallResult } from "../../memory/index.ts";
 import { AgentError } from "../../shared/errors.ts";
 import { log } from "../../shared/logging.ts";
 import { ToolServiceTag, type ToolService } from "../../tools/index.ts";
@@ -14,13 +15,14 @@ import {
   type AgentInput,
   type AgentOutput,
 } from "../Agent.ts";
-import { SYSTEM_PROMPT, buildMessages } from "./prompt.ts";
+import { SYSTEM_PROMPT, buildMessages, renderRecall } from "./prompt.ts";
 import { appendExchange, emptyState } from "./state.ts";
 
 /**
  * Build the agent over concrete services. The agent:
- *   - exposes registered tools to the LLM with `maxSteps` guard
- *   - logs plan / action / observation per step
+ *   - retrieves relevant long-term memory before each LLM call (M4)
+ *   - exposes registered tools to the LLM with `maxSteps` guard (M3)
+ *   - logs plan / action / observation per step (M3)
  *   - threads conversation state across calls (M2)
  *
  * Tool execution is delegated to `ToolService` so safety, validation,
@@ -29,6 +31,7 @@ import { appendExchange, emptyState } from "./state.ts";
 const buildAgent = (
   llm: LlmClient,
   tools: ToolService,
+  memory: Memory,
   maxSteps: number,
 ): Agent => {
   const toolList = tools.list();
@@ -47,15 +50,30 @@ const buildAgent = (
     initialState: emptyState,
     run: (input: AgentInput): Effect.Effect<AgentOutput, AgentError> =>
       Effect.gen(function* () {
+        // Auto-retrieve from long-term memory. Failures here are
+        // non-fatal: we just proceed without recalled context.
+        const recall: RecallResult = yield* memory
+          .recall(input.userMessage, { limit: 3, excerptsPerNote: 2 })
+          .pipe(
+            Effect.catchAll((cause) =>
+              log
+                .warn("agent.recall.failed", { message: cause.message })
+                .pipe(Effect.as({ query: input.userMessage, hits: [] })),
+            ),
+          );
+
         yield* log.info("agent.step.start", {
           historyLen: input.state.messages.length,
           toolCount: llmTools.length,
           maxSteps,
+          recallHits: recall.hits.length,
         });
+
+        const systemPrompt = renderRecall(SYSTEM_PROMPT, recall);
 
         const response = yield* llm
           .generate({
-            system: SYSTEM_PROMPT,
+            system: systemPrompt,
             messages: buildMessages(input.state, input.userMessage),
             tools: llmTools,
             maxSteps,
@@ -121,8 +139,9 @@ export const AgentLive = Layer.effect(
   Effect.gen(function* () {
     const llm = yield* LlmClientTag;
     const tools = yield* ToolServiceTag;
+    const memory = yield* MemoryTag;
     const config = yield* ConfigTag;
-    return buildAgent(llm, tools, config.maxAgentSteps);
+    return buildAgent(llm, tools, memory, config.maxAgentSteps);
   }),
 );
 

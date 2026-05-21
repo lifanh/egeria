@@ -49,5 +49,5 @@ src/
 - ✅ Milestone 1: tool system + writeNote (with path safety + tests)
 - ✅ Milestone 2: conversation state (CLI chat loop + capped history + tests)
 - ✅ Milestone 3: planning and tool calling (LLM-driven tool loop, max-step guard, plan/action/observation logs)
-- ⬜ Milestone 4: long-term memory retrieval
+- ✅ Milestone 4: long-term memory retrieval (readNotes + searchNotes tools, memory-backed auto-recall in prompt)
 - ⬜ Milestone 5: reliability pass

@@ -13,6 +13,11 @@ import type {
   LlmResponse,
   LlmStep,
 } from "../src/llm/index.ts";
+import type {
+  Memory,
+  RecallHit,
+  RecallResult,
+} from "../src/memory/index.ts";
 import type { ToolService } from "../src/tools/index.ts";
 
 /**
@@ -40,10 +45,7 @@ const text = (t: string, steps: LlmStep[] = []): LlmResponse => ({
   steps,
 });
 
-/**
- * Empty tool service: agent has no tools to offer the model. Used by
- * the state-only tests carried over from M2.
- */
+/** Empty tool service: agent has no tools to offer the model. */
 const emptyTools: ToolService = {
   list: () => [],
   execute: (name) =>
@@ -53,6 +55,18 @@ const emptyTools: ToolService = {
       message: "no tools",
     } as never),
 };
+
+/** Memory stub that recalls nothing unless configured. */
+const memoryStub = (hits: RecallHit[] = []): Memory => ({
+  remember: () =>
+    Effect.fail({
+      _tag: "MemoryError",
+      message: "stub",
+    } as never),
+  list: () => Effect.succeed({ notes: [], truncated: false }),
+  recall: (query): Effect.Effect<RecallResult, never> =>
+    Effect.succeed({ query, hits }),
+});
 
 describe("agent state", () => {
   test("emptyState has no messages", () => {
@@ -92,15 +106,13 @@ describe("agent.run", () => {
       const last = req.messages.at(-1)?.content ?? "";
       return text(`echo:${last}`);
     });
-    const agent = buildAgentForTesting(client, emptyTools, 5);
+    const agent = buildAgentForTesting(client, emptyTools, memoryStub(), 5);
 
     const turn1 = await Effect.runPromise(
       agent.run({ userMessage: "hello", state: agent.initialState() }),
     );
     expect(turn1.reply).toBe("echo:hello");
-    expect(calls[0]?.messages).toEqual([
-      { role: "user", content: "hello" },
-    ]);
+    expect(calls[0]?.messages).toEqual([{ role: "user", content: "hello" }]);
 
     const turn2 = await Effect.runPromise(
       agent.run({ userMessage: "again", state: turn1.state }),
@@ -115,7 +127,7 @@ describe("agent.run", () => {
 
   test("attaches the system prompt on every call", async () => {
     const { client, calls } = makeStubLlm(() => text("ok"));
-    const agent = buildAgentForTesting(client, emptyTools, 5);
+    const agent = buildAgentForTesting(client, emptyTools, memoryStub(), 5);
     await Effect.runPromise(
       agent.run({ userMessage: "x", state: agent.initialState() }),
     );
@@ -125,7 +137,7 @@ describe("agent.run", () => {
 
   test("trims reply whitespace before storing", async () => {
     const { client } = makeStubLlm(() => text("  spaced  "));
-    const agent = buildAgentForTesting(client, emptyTools, 5);
+    const agent = buildAgentForTesting(client, emptyTools, memoryStub(), 5);
     const out = await Effect.runPromise(
       agent.run({ userMessage: "x", state: agent.initialState() }),
     );
@@ -133,11 +145,41 @@ describe("agent.run", () => {
   });
 });
 
+describe("agent.run with memory recall", () => {
+  test("injects recalled note snippets into the system prompt", async () => {
+    const { client, calls } = makeStubLlm(() => text("ok"));
+    const memory = memoryStub([
+      {
+        filename: "study-plan.md",
+        excerpts: ["finish calculus today", "review linear algebra"],
+      },
+    ]);
+    const agent = buildAgentForTesting(client, emptyTools, memory, 5);
+
+    await Effect.runPromise(
+      agent.run({
+        userMessage: "remind me about my plan",
+        state: agent.initialState(),
+      }),
+    );
+
+    const sys = calls[0]?.system ?? "";
+    expect(sys).toContain("Relevant notes from the local store");
+    expect(sys).toContain("study-plan.md");
+    expect(sys).toContain("finish calculus today");
+  });
+
+  test("does not change the prompt when nothing is recalled", async () => {
+    const { client, calls } = makeStubLlm(() => text("ok"));
+    const agent = buildAgentForTesting(client, emptyTools, memoryStub(), 5);
+    await Effect.runPromise(
+      agent.run({ userMessage: "hi", state: agent.initialState() }),
+    );
+    expect(calls[0]?.system).not.toContain("Relevant notes");
+  });
+});
+
 describe("agent.run with tools", () => {
-  /**
-   * Tool service that records executions and returns scripted output
-   * per tool name.
-   */
   const makeToolService = (
     schemas: Record<string, unknown>,
     impls: Record<string, (input: unknown) => unknown>,
@@ -167,12 +209,10 @@ describe("agent.run with tools", () => {
       { writeNote: () => ({ ok: true }) },
     );
     const { client, calls } = makeStubLlm(() => text("done"));
-    const agent = buildAgentForTesting(client, svc, 7);
-
+    const agent = buildAgentForTesting(client, svc, memoryStub(), 7);
     await Effect.runPromise(
       agent.run({ userMessage: "hi", state: agent.initialState() }),
     );
-
     expect(calls[0]?.tools?.map((t) => t.name)).toEqual(["writeNote"]);
     expect(calls[0]?.maxSteps).toBe(7);
   });
@@ -190,14 +230,11 @@ describe("agent.run with tools", () => {
       finishReason: "tool-calls",
     }));
     const { client } = makeStubLlm(() => text("", fakeSteps));
-    const agent = buildAgentForTesting(client, svc, 3);
-
+    const agent = buildAgentForTesting(client, svc, memoryStub(), 3);
     const out = await Effect.runPromise(
       agent.run({ userMessage: "do stuff", state: agent.initialState() }),
     );
     expect(out.reply).toContain("3-step limit");
-    // State still records the user/assistant pair so subsequent turns
-    // see the truncated answer.
     expect(out.state.messages.at(-1)?.role).toBe("assistant");
   });
 
@@ -207,16 +244,13 @@ describe("agent.run with tools", () => {
       { writeNote: (input) => ({ wrote: input }) },
     );
     const { client } = makeStubLlm((req) => {
-      // Simulate the AI SDK invoking the bridged tool.
       const bridged = req.tools?.[0];
       if (bridged) {
-        // Fire-and-forget invocation through the same closure the
-        // real AI SDK would use.
         bridged.execute({ filename: "x.md", content: "y" });
       }
       return text("saved");
     });
-    const agent = buildAgentForTesting(client, svc, 5);
+    const agent = buildAgentForTesting(client, svc, memoryStub(), 5);
     const out = await Effect.runPromise(
       agent.run({ userMessage: "save", state: agent.initialState() }),
     );

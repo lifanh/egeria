@@ -25,7 +25,7 @@ const fail = async (error: unknown): Promise<never> => {
 
 try {
   const agent = await runtime.runPromise(AgentTag);
-  await runtime.runPromise(log.info("agent.bootstrap", { milestone: 3 }));
+  await runtime.runPromise(log.info("agent.bootstrap", { milestone: 4 }));
 
   console.log("Egeria ready. Type a message, or /exit to quit.");
 

@@ -1,4 +1,5 @@
 import { createVertex } from "@ai-sdk/google-vertex";
+import { APICallError } from "@ai-sdk/provider";
 import {
   dynamicTool,
   generateText,
@@ -20,6 +21,29 @@ import {
 } from "../LlmClient.ts";
 import { withLlmRetry } from "./retryPolicy.ts";
 import { withLlmTimeout } from "./timeoutPolicy.ts";
+
+/**
+ * Map any caught exception from `generateText` to a typed `LlmError`.
+ * The `retryable` flag tells the retry policy whether to re-attempt:
+ * we trust the AI SDK's `APICallError.isRetryable` (true for network,
+ * 408/409/429/5xx; false for 4xx auth/validation).
+ */
+const toLlmError = (cause: unknown): LlmError => {
+  if (APICallError.isInstance(cause)) {
+    return new LlmError({
+      message: cause.message,
+      retryable: cause.isRetryable,
+      statusCode: cause.statusCode,
+      cause,
+    });
+  }
+  if (cause instanceof Error) {
+    // Unknown shape: assume transient so a single retry can recover
+    // from blips, but downstream still surfaces the message verbatim.
+    return new LlmError({ message: cause.message, retryable: true, cause });
+  }
+  return new LlmError({ message: String(cause), retryable: false, cause });
+};
 
 /**
  * Concrete LLM client backed by Vercel AI SDK + Google Vertex (express
@@ -64,12 +88,11 @@ const buildClient = (config: Config): LlmClient => {
           messages,
           tools: aiTools,
           stopWhen: stepCountIs(maxSteps),
+          // Disable the AI SDK's own retry: our Effect Schedule owns
+          // retry policy so retryable classification stays consistent.
+          maxRetries: 0,
         }),
-      catch: (cause) =>
-        new LlmError({
-          message: cause instanceof Error ? cause.message : String(cause),
-          cause,
-        }),
+      catch: toLlmError,
     });
 
     return call.pipe(

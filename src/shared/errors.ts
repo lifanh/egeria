@@ -12,6 +12,10 @@ export class ConfigError extends Data.TaggedError("ConfigError")<{
 
 export class LlmError extends Data.TaggedError("LlmError")<{
   readonly message: string;
+  /** True for transient failures safe to retry (network, 429, 5xx). */
+  readonly retryable: boolean;
+  /** Optional HTTP status code if the failure came from an API call. */
+  readonly statusCode?: number;
   readonly cause?: unknown;
 }> {}
 

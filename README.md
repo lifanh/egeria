@@ -50,4 +50,4 @@ src/
 - ✅ Milestone 2: conversation state (CLI chat loop + capped history + tests)
 - ✅ Milestone 3: planning and tool calling (LLM-driven tool loop, max-step guard, plan/action/observation logs)
 - ✅ Milestone 4: long-term memory retrieval (readNotes + searchNotes tools, memory-backed auto-recall in prompt)
-- ⬜ Milestone 5: reliability pass
+- ✅ Milestone 5: reliability pass (classified LLM retry, friendly errors, per-turn recovery, request-ID logs)

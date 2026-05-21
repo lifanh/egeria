@@ -11,6 +11,10 @@ export const withLlmTimeout =
       Effect.timeoutFail({
         duration: Duration.millis(millis),
         onTimeout: () =>
-          new LlmError({ message: `llm call exceeded ${millis}ms timeout` }),
+          new LlmError({
+            message: `llm call exceeded ${millis}ms timeout`,
+            // Timeouts already wrap the retry chain; do not retry again.
+            retryable: false,
+          }),
       }),
     );

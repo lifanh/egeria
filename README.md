@@ -20,6 +20,25 @@ the Vertex AI console.
 bun run dev
 ```
 
+## Optional Langfuse tracing
+
+Egeria can send Vercel AI SDK model and tool telemetry to Langfuse. Set both
+Langfuse keys in `.env` to enable tracing; leave them unset to run without
+observability. Prompt and response content recording is disabled; traces include
+operational metadata such as model name, message count, tool count, token usage,
+and timing.
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+LANGFUSE_SAMPLE_RATE=1
+```
+
+Use `https://us.cloud.langfuse.com` for the US cloud region or your self-hosted
+URL for `LANGFUSE_BASE_URL`. `LANGFUSE_SAMPLE_RATE` accepts `0` through `1`.
+Set `LANGFUSE_LOG_LEVEL=DEBUG` temporarily if traces do not appear.
+
 ## Test
 
 ```bash

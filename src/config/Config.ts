@@ -1,5 +1,15 @@
 import { Context } from "effect";
 
+export type LangfuseConfig =
+  | { readonly enabled: false }
+  | {
+      readonly enabled: true;
+      readonly publicKey: string;
+      readonly secretKey: string;
+      readonly baseUrl?: string;
+      readonly sampleRate: number;
+    };
+
 /**
  * Public, validated runtime configuration.
  *
@@ -17,6 +27,7 @@ export interface Config {
   readonly toolTimeoutMs: number;
   readonly vertexProject?: string;
   readonly vertexLocation?: string;
+  readonly langfuse: LangfuseConfig;
 }
 
 /**

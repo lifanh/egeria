@@ -18,6 +18,16 @@ const loadConfig: Effect.Effect<Config, ConfigError> = Effect.try({
       throw new Error(`invalid environment: ${issues}`);
     }
     const e = parsed.data;
+    const langfuse =
+      e.LANGFUSE_PUBLIC_KEY && e.LANGFUSE_SECRET_KEY
+        ? ({
+            enabled: true,
+            publicKey: e.LANGFUSE_PUBLIC_KEY,
+            secretKey: e.LANGFUSE_SECRET_KEY,
+            baseUrl: e.LANGFUSE_BASE_URL,
+            sampleRate: e.LANGFUSE_SAMPLE_RATE,
+          } as const)
+        : ({ enabled: false } as const);
     const config: Config = {
       modelProvider: e.MODEL_PROVIDER,
       modelName: e.MODEL_NAME,
@@ -28,6 +38,7 @@ const loadConfig: Effect.Effect<Config, ConfigError> = Effect.try({
       toolTimeoutMs: e.TOOL_TIMEOUT_MS,
       vertexProject: e.GOOGLE_VERTEX_PROJECT,
       vertexLocation: e.GOOGLE_VERTEX_LOCATION,
+      langfuse,
     };
     return config;
   },

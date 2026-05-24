@@ -20,6 +20,7 @@ import {
   type LlmTool,
 } from "../LlmClient.ts";
 import { withLlmRetry } from "./retryPolicy.ts";
+import { buildAiSdkTelemetry } from "./telemetry.ts";
 import { withLlmTimeout } from "./timeoutPolicy.ts";
 
 /**
@@ -88,6 +89,11 @@ const buildClient = (config: Config): LlmClient => {
           messages,
           tools: aiTools,
           stopWhen: stepCountIs(maxSteps),
+          experimental_telemetry: buildAiSdkTelemetry(request, {
+            enabled: config.langfuse.enabled,
+            modelProvider: config.modelProvider,
+            modelName: config.modelName,
+          }),
           // Disable the AI SDK's own retry: our Effect Schedule owns
           // retry policy so retryable classification stays consistent.
           maxRetries: 0,

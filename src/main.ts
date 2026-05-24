@@ -1,9 +1,11 @@
 import { Cause, Exit, ManagedRuntime, Option } from "effect";
 import { AgentTag, type AgentState } from "./agent/index.ts";
+import { ConfigTag } from "./config/index.ts";
 import { AppLive } from "./runtime/index.ts";
 import { newId } from "./shared/ids.ts";
 import { log } from "./shared/logging.ts";
 import { toUserMessage } from "./shared/userMessages.ts";
+import { startLangfuseTracing, type TracingHandle } from "./tracing/index.ts";
 
 /**
  * CLI chat loop. Reads stdin lines, threads agent state across turns,
@@ -30,7 +32,11 @@ const causeToError = (cause: Cause.Cause<unknown>): unknown =>
     () => ({ _tag: "AgentError", message: Cause.pretty(cause) }) as const,
   );
 
-const exitFatal = async (error: unknown, event: string): Promise<never> => {
+const exitFatal = async (
+  error: unknown,
+  event: string,
+  tracing?: TracingHandle,
+): Promise<never> => {
   await runtime.runPromise(
     log.error(event, {
       tag: (error as { _tag?: string })._tag,
@@ -38,13 +44,21 @@ const exitFatal = async (error: unknown, event: string): Promise<never> => {
     }),
   );
   console.error(`\n${toUserMessage(error)}\n`);
+  await tracing?.shutdown();
   await runtime.dispose();
   process.exit(1);
 };
 
+const configExit = await runtime.runPromiseExit(ConfigTag);
+if (!Exit.isSuccess(configExit)) {
+  await exitFatal(causeToError(configExit.cause), "config.startup_failed");
+  process.exit(1); // unreachable; keeps TS narrowing simple
+}
+const tracing = startLangfuseTracing(configExit.value);
+
 const agentExit = await runtime.runPromiseExit(AgentTag);
 if (!Exit.isSuccess(agentExit)) {
-  await exitFatal(causeToError(agentExit.cause), "agent.startup_failed");
+  await exitFatal(causeToError(agentExit.cause), "agent.startup_failed", tracing);
   process.exit(1); // unreachable; keeps TS narrowing simple
 }
 const agent = agentExit.value;
@@ -92,5 +106,6 @@ try {
 
   await runtime.runPromise(log.info("agent.shutdown"));
 } finally {
+  await tracing.shutdown();
   await runtime.dispose();
 }

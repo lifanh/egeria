@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+echo "Setting up Egeria in $repo_root"
+
+if ! command -v bun >/dev/null 2>&1; then
+  missing_packages=()
+  command -v curl >/dev/null 2>&1 || missing_packages+=(curl)
+  command -v unzip >/dev/null 2>&1 || missing_packages+=(unzip)
+
+  if ((${#missing_packages[@]})); then
+    if ((EUID == 0)); then
+      apt-get update
+      apt-get install -y "${missing_packages[@]}"
+    else
+      sudo apt-get update
+      sudo apt-get install -y "${missing_packages[@]}"
+    fi
+  fi
+
+  echo "Installing Bun"
+  curl -fsSL https://bun.sh/install | bash
+fi
+
+# Bun's installer places the binary here. Export it for this run even though
+# the installer cannot update the environment of an already-running script.
+export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "Bun installation failed: bun is not available on PATH" >&2
+  exit 1
+fi
+
+profile_marker="# Egeria orb Bun path"
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+  cat >> "$HOME/.bash_profile" <<'EOF'
+
+# Egeria orb Bun path
+if [[ -d "$HOME/.bun/bin" ]]; then
+  export BUN_INSTALL="$HOME/.bun"
+  export PATH="$BUN_INSTALL/bin:$PATH"
+fi
+EOF
+fi
+
+if [[ ! -f .env ]]; then
+  cp -- .env.example .env
+  echo "Created .env from .env.example; set API_KEY before running the agent"
+else
+  echo "Keeping existing .env"
+fi
+
+echo "Installing locked Bun dependencies"
+bun install --frozen-lockfile
+
+echo "Egeria setup complete (Bun $(bun --version))"

@@ -29,7 +29,7 @@ existing Node installation to version 24.
 
 ```bash
 # Terminal 1
-bun run agentos:server
+AGENTOS_ALLOW_UNAUTHENTICATED_LOCAL=1 bun run agentos:server
 
 # Terminal 2
 CLOUDFLARE_API_KEY=... \
@@ -51,6 +51,35 @@ the same `AGENTOS_VM_ID`. `AGENTOS_ENDPOINT` is intentionally restricted to
 loopback HTTP because `openSession` transmits the Cloudflare token. A production
 remote client must use an authenticated HTTPS actor endpoint instead of this
 scaffold.
+
+### Browser workspace
+
+Egeria also includes an orb-like browser workspace. The browser talks directly
+to the agentOS actor client: agent sessions, files, and terminal commands all run
+inside the durable VM rather than in the web server.
+
+```bash
+# Terminal 1: actor runtime
+AGENTOS_ALLOW_UNAUTHENTICATED_LOCAL=1 bun run agentos:server
+
+# Terminal 2: browser UI
+bun run web
+```
+
+Open the web UI and connect it to `http://localhost:6420`. For a remote orb,
+expose both services through authenticated HTTPS portals and set
+`AGENTOS_PUBLIC_ENDPOINT` on the web service to the actor portal URL (or paste
+that URL into the connection dialog). Remote deployments must also set a strong
+`AGENTOS_AUTH_TOKEN` on the actor service and enter it as the connection
+capability in the browser. The capability remains in memory; the browser stores
+only the endpoint and VM ID. Cloudflare credentials are not placed in local
+storage, but agentOS does retain the session environment as part of each durable
+session; use the session delete control to remove its token. Revoking the
+Cloudflare token remains the authoritative response when secure erasure matters.
+
+The actor fails to start without one of these explicit security modes. Use
+`AGENTOS_ALLOW_UNAUTHENTICATED_LOCAL=1` only for loopback development; never set
+it on a remotely exposed actor.
 
 ## Optional Langfuse tracing
 

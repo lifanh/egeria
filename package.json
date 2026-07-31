@@ -10,7 +10,9 @@
     "dev": "bun run src/main.ts",
     "test": "bun test",
     "agentos:server": "node src/agentos/server.ts",
-    "agentos:client": "node src/agentos/client.ts"
+    "agentos:client": "node src/agentos/client.ts",
+    "web": "bun run src/web/server.ts",
+    "web:build": "bun build src/web/app.ts --outdir=dist/web --target=browser"
   },
   "devDependencies": {
     "@types/bun": "latest"

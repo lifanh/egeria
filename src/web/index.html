@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f8f5ef" />
+    <title>Egeria — agent workspace</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="Workspace navigation">
+        <div class="brand">
+          <div class="brand-mark">E</div>
+          <div><strong>Egeria</strong><span>agent workspace</span></div>
+        </div>
+
+        <button class="new-session" id="new-session" type="button"><span>＋</span> New session</button>
+
+        <div class="side-label">SESSIONS</div>
+        <nav class="sessions" id="sessions" aria-label="Agent sessions">
+          <div class="empty-side">Connect to an agentOS runtime to begin.</div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button class="runtime-card" id="runtime-settings" type="button">
+            <span class="status-dot" id="status-dot"></span>
+            <span><strong id="runtime-state">Disconnected</strong><small id="runtime-detail">agentOS runtime</small></span>
+            <span class="chevron">›</span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <button class="mobile-menu" id="mobile-menu" type="button" aria-label="Open sessions" aria-controls="sidebar" aria-expanded="false">☰</button>
+          <div>
+            <div class="eyebrow">DURABLE SANDBOX</div>
+            <h1 id="session-title">New workspace</h1>
+          </div>
+          <div class="top-actions">
+            <span class="model-pill"><i></i> DeepSeek V4 Flash</span>
+            <button class="icon-button" id="refresh" type="button" title="Refresh sandbox">↻</button>
+          </div>
+        </header>
+
+        <section class="conversation" id="conversation">
+          <div class="welcome" id="welcome">
+            <div class="orbital"><span>e</span></div>
+            <p class="kicker">YOUR AGENT, INSIDE</p>
+            <h2>A quiet place to build.</h2>
+            <p>Pi runs inside a durable agentOS VM, with its filesystem, processes, and tools available directly from your browser.</p>
+            <div class="prompt-grid">
+              <button type="button" data-prompt="Inspect the workspace and explain what is here."><strong>Explore the workspace</strong><span>Understand files, structure, and next steps →</span></button>
+              <button type="button" data-prompt="Create a small, thoughtful project in this workspace. Start by proposing a concise plan."><strong>Start something new</strong><span>Plan and build inside the sandbox →</span></button>
+            </div>
+          </div>
+          <div class="messages" id="messages" aria-live="polite"></div>
+        </section>
+
+        <form class="composer" id="composer">
+          <textarea id="prompt" rows="1" placeholder="Ask Egeria to build, inspect, or change something…" disabled></textarea>
+          <div class="composer-row">
+            <span class="composer-hint"><kbd>↵</kbd> send · <kbd>⇧ ↵</kbd> new line</span>
+            <button class="send" id="send" type="submit" disabled aria-label="Send prompt">↑</button>
+          </div>
+        </form>
+      </main>
+
+      <aside class="inspector">
+        <div class="inspector-tabs" role="tablist">
+          <button class="active" type="button" data-tab="files">Files</button>
+          <button type="button" data-tab="terminal">Terminal</button>
+        </div>
+        <section class="panel active" id="files-panel">
+          <div class="panel-heading"><span>WORKSPACE</span><button id="refresh-files" type="button">↻</button></div>
+          <div class="file-tree" id="file-tree"><div class="panel-empty">Sandbox files will appear here.</div></div>
+          <article class="file-preview" id="file-preview" hidden>
+            <header><span id="file-name"></span><button id="close-file" type="button">×</button></header>
+            <pre id="file-content"></pre>
+          </article>
+        </section>
+        <section class="panel" id="terminal-panel">
+          <div class="terminal-output" id="terminal-output"><span class="terminal-muted">Commands run inside /workspace.</span></div>
+          <form class="terminal-input" id="terminal-form">
+            <span>$</span><input id="terminal-command" autocomplete="off" placeholder="ls -la" disabled /><button type="submit">Run</button>
+          </form>
+        </section>
+      </aside>
+    </div>
+    <button class="mobile-scrim" id="mobile-scrim" type="button" aria-label="Close sessions"></button>
+
+    <dialog id="connect-dialog">
+      <form method="dialog" class="dialog-card" id="connect-form">
+        <button class="dialog-close" value="cancel" type="submit" aria-label="Close">×</button>
+        <div class="dialog-mark">E</div>
+        <p class="kicker">AGENTOS CONNECTION</p>
+        <h2>Enter the sandbox.</h2>
+        <p class="dialog-copy">The browser connects directly to your agentOS actor. Runtime coordinates are kept locally; provider credentials are sent only when creating a session and are never saved by this browser.</p>
+        <label>Actor endpoint<input id="endpoint" name="endpoint" type="url" placeholder="http://localhost:6420" required /></label>
+        <label>Durable VM ID<input id="vm-id" name="vmId" value="egeria-browser" required pattern="[a-zA-Z0-9._-]+" /></label>
+        <label>Connection capability <span class="optional">remote only</span><input id="auth-token" name="authToken" type="password" autocomplete="off" /></label>
+        <div class="dialog-error" id="connect-error"></div>
+        <button class="primary" id="connect-button" value="default" type="submit">Connect runtime</button>
+      </form>
+    </dialog>
+
+    <dialog id="session-dialog">
+      <form method="dialog" class="dialog-card" id="session-form">
+        <button class="dialog-close" value="cancel" type="submit" aria-label="Close">×</button>
+        <p class="kicker">NEW DURABLE SESSION</p>
+        <h2>Wake an agent.</h2>
+        <p class="dialog-copy">Cloudflare uses your stored DeepSeek provider key. The gateway token becomes part of this durable agent session; delete the session to remove it.</p>
+        <label>Session name<input id="session-name" name="sessionName" placeholder="my-project" required pattern="(?!\.{1,2}$)[a-zA-Z0-9._-]+" /></label>
+        <label>Cloudflare account ID<input id="account-id" name="accountId" required /></label>
+        <label>Gateway ID<input id="gateway-id" name="gatewayId" value="default" required /></label>
+        <label>AI Gateway token<input id="api-key" name="apiKey" type="password" required autocomplete="off" /></label>
+        <div class="dialog-error" id="session-error"></div>
+        <button class="primary" id="create-session-button" value="default" type="submit">Create sandbox</button>
+      </form>
+    </dialog>
+
+    <dialog id="delete-dialog">
+      <form method="dialog" class="dialog-card" id="delete-form">
+        <button class="dialog-close" value="cancel" type="submit" aria-label="Close">×</button>
+        <p class="kicker">DELETE SESSION</p>
+        <h2>Remove this agent?</h2>
+        <p class="dialog-copy">This deletes the durable session and its stored Cloudflare environment. Files in the shared VM workspace remain.</p>
+        <div class="delete-name" id="delete-session-name"></div>
+        <div class="dialog-error" id="delete-error"></div>
+        <button class="primary danger" id="delete-session-button" value="default" type="submit">Delete session and credentials</button>
+      </form>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -3,9 +3,14 @@
   "module": "src/main.ts",
   "type": "module",
   "private": true,
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "bun run src/main.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "agentos:server": "node src/agentos/server.ts",
+    "agentos:client": "node src/agentos/client.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -14,11 +19,13 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@agentos-software/pi": "^0.2.7",
     "@ai-sdk/google-vertex": "^4.0.126",
     "@langfuse/otel": "^5.3.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
     "@opentelemetry/sdk-trace-base": "^2.7.1",
     "@opentelemetry/sdk-trace-node": "^2.7.1",
+    "@rivet-dev/agentos": "^0.2.14",
     "ai": "^6.0.177",
     "effect": "^3.21.2",
     "zod": "^4.4.3"

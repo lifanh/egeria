@@ -20,6 +20,38 @@ the Vertex AI console.
 bun run dev
 ```
 
+## agentOS coding-agent runtime
+
+The optional agentOS integration runs Pi in an isolated, durable VM actor. It
+uses Node.js 24 and routes DeepSeek V4 Flash through Cloudflare AI Gateway
+stored BYOK. Node.js and npm are setup prerequisites; orb setup normalizes an
+existing Node installation to version 24.
+
+```bash
+# Terminal 1
+bun run agentos:server
+
+# Terminal 2
+CLOUDFLARE_API_KEY=... \
+CLOUDFLARE_ACCOUNT_ID=... \
+CLOUDFLARE_GATEWAY_ID=default \
+bun run agentos:client
+```
+
+The client uses the durable `egeria-agent` VM and
+`egeria-deepseek-v4-flash-byok-v1` session by default. This is a local-only,
+single-flight smoke client: it writes Pi's provider and model configuration,
+deletes any stale smoke session, opens a fresh session, verifies a unique exact
+response, and deletes the session again so the Cloudflare token is not retained
+in durable session state. The VM actor remains durable. The `/compat` route lets
+Cloudflare inject the stored DeepSeek key.
+
+Use a dedicated VM for this smoke test and do not run clients concurrently with
+the same `AGENTOS_VM_ID`. `AGENTOS_ENDPOINT` is intentionally restricted to
+loopback HTTP because `openSession` transmits the Cloudflare token. A production
+remote client must use an authenticated HTTPS actor endpoint instead of this
+scaffold.
+
 ## Optional Langfuse tracing
 
 Egeria can send Vercel AI SDK model and tool telemetry to Langfuse. Set both

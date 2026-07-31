@@ -6,6 +6,22 @@ cd "$repo_root"
 
 echo "Setting up Egeria in $repo_root"
 
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is required to bootstrap agentOS; install Node.js 24 and rerun setup" >&2
+  exit 1
+fi
+
+if [[ "$(node --version | cut -d. -f1)" != "v24" ]]; then
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "npm is required to install Node.js 24 for agentOS" >&2
+    exit 1
+  fi
+  echo "Installing Node.js 24 for agentOS"
+  npm install --global n@10.2.0
+  n 24
+  hash -r
+fi
+
 if ! command -v bun >/dev/null 2>&1; then
   missing_packages=()
   command -v curl >/dev/null 2>&1 || missing_packages+=(curl)
@@ -57,4 +73,4 @@ fi
 echo "Installing locked Bun dependencies"
 bun install --frozen-lockfile
 
-echo "Egeria setup complete (Bun $(bun --version))"
+echo "Egeria setup complete (Bun $(bun --version), Node $(node --version))"

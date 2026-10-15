@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { MemoryError } from "../../shared/errors.ts";
 import type { Note, NoteSummary } from "../Memory.ts";
@@ -28,7 +28,7 @@ export const writeNote = async (
   const filename = normalizeFilename(title);
   const target = resolveSafePath(rootDir, filename);
   await mkdir(dirname(target), { recursive: true });
-  await Bun.write(target, content);
+  await writeFile(target, content, "utf8");
   return {
     path: target,
     filename,

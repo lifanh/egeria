@@ -10,4 +10,4 @@ export {
   type ToolInfo,
   type ToolService,
 } from "./Tool.ts";
-export { ToolsLive } from "./internal/registry.ts";
+export { ToolsLive, createNoteTools } from "./internal/registry.ts";

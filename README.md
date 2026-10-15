@@ -84,8 +84,9 @@ it on a remotely exposed actor.
 ### Session policy and product boundaries
 
 The browser workspace is the Pi coding-agent mode. The original `bun run dev`
-notes/study assistant remains separate: its memory, tools, and Langfuse tracing
-are not automatically available to Pi.
+notes/study assistant shares its memory implementation and validated note tools
+with Pi. Its host-side notes and Langfuse tracing are not automatically copied
+into the VM.
 
 Both the browser and smoke client use `createSessionTemplate` from
 `src/agentos/index.ts`. It validates session names, Cloudflare URL path
@@ -101,6 +102,41 @@ capability can execute commands and create sessions directly. Do not share a VM
 between untrusted users. Multi-user ownership and approval enforcement remain
 future work. Tokens are kept out of generated config files, but remain in the
 durable session environment until deletion; revoke tokens when erasure matters.
+
+### Persistent notes in Pi
+
+New browser and smoke-client sessions install a bundled CommonJS Pi extension
+in their own `$HOME/.pi/agent/extensions/egeria-memory.cjs` before opening the
+session. `bun run web` builds and serves this extension automatically;
+`bun run agentos:client` builds it before provisioning. Existing sessions do not
+upgrade automatically: create a new session to load the current extension.
+
+Pi gains the same `writeNote`, `readNotes`, and `searchNotes` tools as the CLI.
+Before each prompt, keyword recall adds matching excerpts and filenames to Pi's
+system context, marked as reference data rather than instructions. Recall errors
+produce an explicit unavailable notice rather than silently claiming success.
+No vector database is used.
+
+Notes live in `/workspace/.egeria/notes`, shared by all sessions in one VM and
+separate from per-session Pi configuration. Reconnecting the browser or deleting
+a session does not delete notes; a different VM has a different notes store.
+Host-side `NOTES_DIR` files are not imported automatically. Do not store secrets
+in notes: matching excerpts are sent to the model through the configured gateway.
+
+`writeNote` now creates new files only, for both CLI and Pi. An existing normalized
+filename is an error, not an overwrite; use a new title for updates. Each write
+is capped at 64 KiB. Note tools reject traversal and symlink roots, skip symlink
+entries on listing, and open reads without following final-component symlinks.
+These guards do not restrict an agent's separate shell or file tools in this
+trusted single-user VM.
+
+Reads default to 20 notes and never exceed 50 notes or 256 KiB of content.
+Recall scans at most 20 alphabetically ordered notes / 256 KiB, returns five
+hits by default, and includes at most two 240-character excerpts per hit.
+Results report `truncated` when the input scan is capped; a search may therefore
+omit later files. Tool calls and automatic recall have a ten-second timeout.
+Cancellation prevents already-aborted calls from starting; an in-flight
+filesystem write is not transactional and may finish after cancellation.
 
 ## Optional Langfuse tracing
 
@@ -126,6 +162,25 @@ Set `LANGFUSE_LOG_LEVEL=DEBUG` temporarily if traces do not appear.
 ```bash
 bun test
 ```
+
+This includes bundled-extension tests using Pi's actual tool-schema validator,
+tool execution and recall against temporary files, plus memory safety regressions.
+Type-check and build with `bunx tsc --noEmit` and `bun run web:build`.
+
+For the live VM test, start a loopback actor as shown above and provide
+`CLOUDFLARE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, and optionally
+`CLOUDFLARE_GATEWAY_ID` in the environment, then run:
+
+```bash
+bun run test:agentos-memory
+```
+
+This opt-in test uses the real Pi/agentOS VM and gateway (billable model calls).
+It creates a unique disposable VM, checks actual note tool events and file
+contents, reconnects the client, deletes the writer session, and verifies a fresh
+session recalls the note without calling tools. It deletes its sessions and test
+files afterward; the empty VM actor may remain. It does not restart the actor
+server or simulate storage loss. It is not part of the offline `bun test` suite.
 
 ## Project structure
 

@@ -17,6 +17,7 @@ export default function egeriaMemory(pi: ExtensionAPI) {
       // schemas that validate execute(). No second schema implementation.
       parameters: tool.inputJsonSchema as Parameters<ExtensionAPI["registerTool"]>[0]["parameters"],
       async execute(_id, input, signal) {
+        signal?.throwIfAborted();
         return Effect.runPromise(tools.execute(tool.name, input).pipe(
           Effect.map((result) => ({
             content: [{ type: "text" as const, text: JSON.stringify(result) }],

@@ -42,7 +42,8 @@ const buildRegistry = (
   const infos: ReadonlyArray<ToolInfo> = tools.map((t) => ({
     name: t.name,
     description: t.description,
-    inputJsonSchema: z.toJSONSchema(t.inputSchema),
+    // Pi's AJV validator supports draft-7, not Zod's default 2020-12 dialect.
+    inputJsonSchema: z.toJSONSchema(t.inputSchema, { target: "draft-7" }),
   }));
 
   const timeout = Effect.timeoutFail({

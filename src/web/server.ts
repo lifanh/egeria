@@ -5,6 +5,15 @@ const appBuild = await Bun.build({
   sourcemap: "linked",
 });
 
+const memoryBuild = await Bun.build({
+  entrypoints: [new URL("../agentos/memory-extension.ts", import.meta.url).pathname],
+  target: "node",
+  format: "cjs",
+  minify: true,
+});
+if (!memoryBuild.success) throw new Error("Failed to build the Egeria memory extension");
+const memoryExtension = await memoryBuild.outputs[0]!.text();
+
 if (!appBuild.success) {
   for (const log of appBuild.logs) console.error(log);
   throw new Error("Failed to build the Egeria browser client");
@@ -22,6 +31,9 @@ const port = Number(process.env.PORT ?? 3000);
 Bun.serve({
   port,
   routes: {
+    "/egeria-memory.cjs": new Response(memoryExtension, {
+      headers: { "content-type": "text/javascript; charset=utf-8" },
+    }),
     "/": new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } }),
     "/app.js": new Response(await app.arrayBuffer(), {
       headers: { "content-type": "text/javascript; charset=utf-8" },

@@ -31,6 +31,9 @@ export const normalizeFilename = (raw: string): string => {
       message: "filename must not contain path separators or NUL",
     });
   }
+  if (trimmed.includes("..")) {
+    throw new MemoryError({ message: "parent directory markers are not allowed" });
+  }
 
   const stripExt = trimmed.replace(/\.md$/i, "");
   const sanitized = stripExt

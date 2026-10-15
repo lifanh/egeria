@@ -61,6 +61,8 @@ export interface RecallHit {
 export interface RecallResult {
   readonly query: string;
   readonly hits: ReadonlyArray<RecallHit>;
+  /** True if the scan was capped; absence is equivalent to false. */
+  readonly truncated?: boolean;
 }
 
 export interface Memory {

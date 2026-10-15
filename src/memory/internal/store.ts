@@ -62,7 +62,7 @@ export const buildMemory = (notesDir: string): Memory => ({
     opts?: RecallOptions,
   ): Effect.Effect<RecallResult, MemoryError> =>
     tryFs(async () => {
-      const { notes } = await readManyNotes(
+      const { notes, truncated } = await readManyNotes(
         notesDir,
         // Always scan the full (capped) set so ranking sees everything;
         // the caller's `limit` controls how many hits come back.
@@ -72,10 +72,10 @@ export const buildMemory = (notesDir: string): Memory => ({
       const hits = rankHits(
         notes,
         query,
-        opts?.limit ?? DEFAULT_RECALL_LIMIT,
-        opts?.excerptsPerNote ?? DEFAULT_EXCERPTS_PER_NOTE,
+        Math.max(0, Math.min(20, Math.floor(opts?.limit ?? DEFAULT_RECALL_LIMIT) || 0)),
+        Math.max(0, Math.min(2, Math.floor(opts?.excerptsPerNote ?? DEFAULT_EXCERPTS_PER_NOTE) || 0)),
       );
-      return { query, hits };
+      return { query, hits, truncated };
     }),
 });
 

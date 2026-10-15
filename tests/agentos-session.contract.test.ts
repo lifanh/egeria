@@ -7,6 +7,7 @@ const input = {
   accountId: "account_123",
   gatewayId: "gateway-456",
   apiKey: "test-only-gateway-token",
+  memoryExtension: "module.exports = function memory(pi) {};",
 };
 
 describe("agentOS session template", () => {
@@ -35,8 +36,10 @@ describe("agentOS session template", () => {
     expect(first.session.env.HOME).not.toBe(second.session.env.HOME);
     for (const template of [first, second]) {
       expect(template.session.env.HOME).toMatch(/^\/home\/agentos\/sessions\/[a-f0-9-]+$/);
-      expect(template.directories).toContain(`${template.session.env.HOME}/.pi/agent`);
-      expect(template.directories).toContain("/workspace");
+      expect(template.directories).toContain(`${template.session.env.HOME}/.pi/agent/extensions`);
+      expect(template.directories).toContain("/workspace/.egeria/notes");
+      expect(template.session.env.EGERIA_NOTES_DIR).toBe("/workspace/.egeria/notes");
+      expect(template.files.find((file) => file.path.endsWith("/extensions/egeria-memory.cjs"))?.content).toBe(input.memoryExtension);
       for (const file of template.files) {
         expect(file.path.startsWith(`${template.session.env.HOME}/.pi/agent/`)).toBe(true);
       }

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Exit } from "effect";
-import { buildMemory } from "../src/memory/internal/store.ts";
+import { createMemory } from "../src/memory/index.ts";
 import {
   rankHits,
   tokenize,
@@ -18,7 +18,7 @@ afterEach(async () => {
   await rm(notesDir, { recursive: true, force: true });
 });
 
-const mem = () => buildMemory(notesDir);
+const mem = () => createMemory(notesDir);
 
 describe("Memory.remember", () => {
   test("writes a normalized .md file and returns its path", async () => {
@@ -141,6 +141,51 @@ describe("retrieval primitives", () => {
 });
 
 describe("Memory safety", () => {
+  test("does not overwrite existing notes, including concurrent writes", async () => {
+    const results = await Promise.all([
+      Effect.runPromiseExit(mem().remember({ title: "decision", content: "first" })),
+      Effect.runPromiseExit(mem().remember({ title: "decision", content: "second" })),
+    ]);
+    expect(results.filter(Exit.isSuccess)).toHaveLength(1);
+    const saved = await readFile(join(notesDir, "decision.md"), "utf8");
+    expect(["first", "second"]).toContain(saved);
+    expect(Exit.isFailure(await Effect.runPromiseExit(mem().remember({ title: "decision", content: "replacement" })))).toBe(true);
+    expect(await readFile(join(notesDir, "decision.md"), "utf8")).toBe(saved);
+  });
+
+  test("neither reads nor overwrites symlink notes and rejects a symlink root", async () => {
+    const outside = await mkdtemp(join(tmpdir(), "egeria-outside-"));
+    try {
+      await writeFile(join(outside, "secret.md"), "outside secret");
+      await symlink(join(outside, "secret.md"), join(notesDir, "linked.md"));
+      expect((await Effect.runPromise(mem().list())).notes).toEqual([]);
+      expect(Exit.isFailure(await Effect.runPromiseExit(mem().remember({ title: "linked", content: "replacement" })))).toBe(true);
+      await symlink(outside, join(notesDir, "root"));
+      const linked = createMemory(join(notesDir, "root"));
+      expect(Exit.isFailure(await Effect.runPromiseExit(linked.list()))).toBe(true);
+      expect(Exit.isFailure(await Effect.runPromiseExit(linked.remember({ title: "secret", content: "replacement" })))).toBe(true);
+      expect(await readFile(join(outside, "secret.md"), "utf8")).toBe("outside secret");
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  test("enforces byte ceilings and reports capped recall", async () => {
+    expect(Exit.isSuccess(await Effect.runPromiseExit(mem().remember({ title: "boundary", content: "é".repeat(32768) })))).toBe(true);
+    expect(Exit.isFailure(await Effect.runPromiseExit(mem().remember({ title: "over", content: "é".repeat(32769) })))).toBe(true);
+    for (let i = 0; i < 21; i++) await writeFile(join(notesDir, `${String(i).padStart(2, "0")}.md`), "orchid".repeat(4000));
+    const list = await Effect.runPromise(mem().list({ limit: 999, maxBytes: 9999999 }));
+    expect(list.notes.reduce((sum, note) => sum + note.bytes, 0)).toBeLessThanOrEqual(256 * 1024);
+    expect(list.truncated).toBe(true);
+    const recall = await Effect.runPromise(mem().recall("orchid"));
+    expect(recall.truncated).toBe(true);
+    expect(recall.hits[0]?.filename).toBe("00.md");
+  });
+
+  test("rejects parent markers even without a slash", async () => {
+    expect(Exit.isFailure(await Effect.runPromiseExit(mem().remember({ title: "safe..unsafe", content: "x" })))).toBe(true);
+  });
+
   test("remember rejects path traversal in title", async () => {
     const exit = await Effect.runPromiseExit(
       mem().remember({ title: "../bad", content: "x" }),

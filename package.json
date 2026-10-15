@@ -9,10 +9,12 @@
   "scripts": {
     "dev": "bun run src/main.ts",
     "test": "bun test",
+    "test:agentos-memory": "bun run agentos:build && node tests/agentos-memory.integration.ts",
     "agentos:server": "node src/agentos/server.ts",
-    "agentos:client": "node src/agentos/client.ts",
+    "agentos:client": "bun run agentos:build && node src/agentos/client.ts",
+    "agentos:build": "bun build src/agentos/memory-extension.ts --target=node --format=cjs --minify --outfile=dist/egeria-memory.cjs",
     "web": "bun run src/web/server.ts",
-    "web:build": "bun build src/web/app.ts --outdir=dist/web --target=browser"
+    "web:build": "bun run agentos:build && bun build src/web/app.ts --outdir=dist/web --target=browser"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -17,4 +17,4 @@ export {
   type RememberInput,
   type RememberOutput,
 } from "./Memory.ts";
-export { MemoryLive } from "./internal/store.ts";
+export { MemoryLive, buildMemory as createMemory } from "./internal/store.ts";

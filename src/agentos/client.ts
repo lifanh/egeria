@@ -1,6 +1,7 @@
 import { createClient } from "@rivet-dev/agentos/client";
 import { Effect } from "effect";
 import { createSessionTemplate, type registry } from "./index.ts";
+import { readFile } from "node:fs/promises";
 
 const endpoint = process.env.AGENTOS_ENDPOINT ?? "http://localhost:6420";
 const vmId = process.env.AGENTOS_VM_ID ?? "egeria-agent";
@@ -36,6 +37,7 @@ const template = Effect.runSync(createSessionTemplate({
   accountId: cloudflareAccountId,
   gatewayId: cloudflareGatewayId,
   apiKey: cloudflareApiKey,
+  memoryExtension: await readFile(new URL("../../dist/egeria-memory.cjs", import.meta.url), "utf8"),
 }));
 
 await vm.deleteSession({ sessionId });

@@ -8,6 +8,7 @@ const TOOL = "searchNotes";
 
 export interface SearchNotesOutput {
   readonly query: string;
+  readonly truncated: boolean;
   readonly hits: ReadonlyArray<{
     readonly filename: string;
     readonly excerpts: ReadonlyArray<string>;
@@ -35,6 +36,6 @@ export const buildSearchNotes = (
           (cause) =>
             new ToolError({ tool: TOOL, message: cause.message, cause }),
         ),
-        Effect.map((r) => ({ query: r.query, hits: r.hits })),
+        Effect.map((r) => ({ query: r.query, hits: r.hits, truncated: r.truncated ?? false })),
       ),
 });

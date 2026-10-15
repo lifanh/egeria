@@ -251,9 +251,13 @@ async function createSession(sessionId: string, accountId: string, gatewayId: st
   if (!vm) throw new Error("Connect to agentOS first");
   if (sessions.some((session) => session.sessionId === sessionId)) throw new Error("A session with this name already exists");
 
-  const template = Effect.runSync(createSessionTemplate({ sessionId, accountId, gatewayId, apiKey }));
   const selectedVm = vm;
   const selectedGeneration = generation;
+  const response = await fetch("/egeria-memory.cjs");
+  if (!response.ok) throw new Error("Could not load the Egeria memory extension");
+  const memoryExtension = await response.text();
+  const template = Effect.runSync(createSessionTemplate({ sessionId, accountId, gatewayId, apiKey, memoryExtension }));
+  if (vm !== selectedVm || generation !== selectedGeneration) throw new Error("Runtime changed before provisioning");
   for (const directory of template.directories) {
     await selectedVm.mkdir(directory, { recursive: true });
   }

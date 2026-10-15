@@ -1,7 +1,7 @@
 import { Duration, Effect, Layer } from "effect";
 import { z } from "zod";
 import { ConfigTag } from "../../config/index.ts";
-import { MemoryTag } from "../../memory/index.ts";
+import { MemoryTag, type Memory } from "../../memory/index.ts";
 import { ToolError } from "../../shared/errors.ts";
 import {
   ToolServiceTag,
@@ -42,7 +42,8 @@ const buildRegistry = (
   const infos: ReadonlyArray<ToolInfo> = tools.map((t) => ({
     name: t.name,
     description: t.description,
-    inputJsonSchema: z.toJSONSchema(t.inputSchema),
+    // Pi's AJV validator supports draft-7, not Zod's default 2020-12 dialect.
+    inputJsonSchema: z.toJSONSchema(t.inputSchema, { target: "draft-7" }),
   }));
 
   const timeout = Effect.timeoutFail({
@@ -83,6 +84,16 @@ const buildRegistry = (
   };
 };
 
+/** Reuse the same validated, bounded note tools in other agent runtimes. */
+export const createNoteTools = (memory: Memory, toolTimeoutMs: number): ToolService => {
+  const tools: AnyTool[] = [
+    buildWriteNote(memory),
+    buildReadNotes(memory),
+    buildSearchNotes(memory),
+  ];
+  return buildRegistry(tools, toolTimeoutMs);
+};
+
 /**
  * Default Live registry: writeNote, readNotes, searchNotes — all
  * backed by the Memory service.
@@ -92,12 +103,7 @@ export const ToolsLive = Layer.effect(
   Effect.gen(function* () {
     const config = yield* ConfigTag;
     const memory = yield* MemoryTag;
-    const tools: AnyTool[] = [
-      buildWriteNote(memory),
-      buildReadNotes(memory),
-      buildSearchNotes(memory),
-    ];
-    return buildRegistry(tools, config.toolTimeoutMs);
+    return createNoteTools(memory, config.toolTimeoutMs);
   }),
 );
 

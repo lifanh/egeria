@@ -20,7 +20,7 @@ export const buildWriteNote = (
 ): ToolDefinition<WriteNoteInput, WriteNoteOutput> => ({
   name: TOOL,
   description:
-    "Create a Markdown note in the local notes directory. " +
+    "Create a new Markdown note in the local notes directory. Existing notes cannot be overwritten; use a new title for updates. " +
     "Filename is normalized; content is plain Markdown.",
   inputSchema: writeNoteInput,
   execute: (input) =>

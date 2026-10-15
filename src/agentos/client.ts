@@ -1,5 +1,6 @@
 import { createClient } from "@rivet-dev/agentos/client";
-import type { registry } from "./server.ts";
+import { Effect } from "effect";
+import { createSessionTemplate, type registry } from "./index.ts";
 
 const endpoint = process.env.AGENTOS_ENDPOINT ?? "http://localhost:6420";
 const vmId = process.env.AGENTOS_VM_ID ?? "egeria-agent";
@@ -30,63 +31,25 @@ if (!cloudflareApiKey || !cloudflareAccountId) {
 
 const client = createClient<typeof registry>({ endpoint });
 const vm = client.vm.getOrCreate(vmId);
-const piConfigDir = "/home/agentos/.pi/agent";
+const template = Effect.runSync(createSessionTemplate({
+  sessionId,
+  accountId: cloudflareAccountId,
+  gatewayId: cloudflareGatewayId,
+  apiKey: cloudflareApiKey,
+}));
 
 await vm.deleteSession({ sessionId });
-await vm.mkdir(piConfigDir, { recursive: true });
-await vm.writeFile(
-  `${piConfigDir}/models.json`,
-  JSON.stringify({
-    providers: {
-      "cloudflare-ai-gateway": {
-        baseUrl: `https://gateway.ai.cloudflare.com/v1/${cloudflareAccountId}/${cloudflareGatewayId}/compat`,
-        api: "openai-completions",
-        apiKey: "CLOUDFLARE_API_KEY",
-        headers: {
-          "cf-aig-authorization": "CLOUDFLARE_AUTHORIZATION",
-          "cf-aig-collect-log-payload": "false",
-        },
-        compat: {
-          supportsDeveloperRole: false,
-          supportsReasoningEffort: false,
-          maxTokensField: "max_tokens",
-        },
-        models: [
-          {
-            id: "deepseek/deepseek-v4-flash",
-            name: "DeepSeek V4 Flash",
-            reasoning: false,
-            input: ["text"],
-            contextWindow: 128_000,
-            maxTokens: 16_384,
-          },
-        ],
-      },
-    },
-  }),
-);
-await vm.writeFile(
-  `${piConfigDir}/settings.json`,
-  JSON.stringify({
-    defaultProvider: "cloudflare-ai-gateway",
-    defaultModel: "deepseek/deepseek-v4-flash",
-  }),
-);
+for (const directory of template.directories) {
+  await vm.mkdir(directory, { recursive: true });
+}
+for (const file of template.files) {
+  await vm.writeFile(file.path, file.content);
+}
 
 const expected = `agentos-pi-deepseek-ok-${crypto.randomUUID()}`;
 
 try {
-  await vm.openSession({
-    sessionId,
-    agent: "pi",
-    env: {
-      HOME: "/home/agentos",
-      CLOUDFLARE_API_KEY: cloudflareApiKey,
-      CLOUDFLARE_ACCOUNT_ID: cloudflareAccountId,
-      CLOUDFLARE_GATEWAY_ID: cloudflareGatewayId,
-      CLOUDFLARE_AUTHORIZATION: `Bearer ${cloudflareApiKey}`,
-    },
-  });
+  await vm.openSession(template.session);
 
   const result = await vm.prompt({
     sessionId,

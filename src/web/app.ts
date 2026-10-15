@@ -1,5 +1,6 @@
 import { createClient } from "@rivet-dev/agentos/client";
-import type { registry } from "../agentos/server.ts";
+import { Effect } from "effect";
+import { createSessionTemplate, type registry } from "../agentos/index.ts";
 
 type Vm = ReturnType<ReturnType<typeof createClient<typeof registry>>["vm"]["getOrCreate"]>;
 type Session = Awaited<ReturnType<Vm["listSessions"]>>["sessions"][number];
@@ -250,58 +251,17 @@ async function createSession(sessionId: string, accountId: string, gatewayId: st
   if (!vm) throw new Error("Connect to agentOS first");
   if (sessions.some((session) => session.sessionId === sessionId)) throw new Error("A session with this name already exists");
 
-  if (!/^[a-zA-Z0-9._-]+$/.test(sessionId) || sessionId === "." || sessionId === "..") throw new Error("Session names may contain only letters, numbers, dots, dashes, and underscores");
+  const template = Effect.runSync(createSessionTemplate({ sessionId, accountId, gatewayId, apiKey }));
   const selectedVm = vm;
   const selectedGeneration = generation;
-  const home = `/home/agentos/sessions/${crypto.randomUUID()}`;
-  const configDir = `${home}/.pi/agent`;
-  await selectedVm.mkdir(configDir, { recursive: true });
-  await selectedVm.mkdir("/workspace", { recursive: true });
-  await selectedVm.writeFile(`${configDir}/models.json`, JSON.stringify({
-    providers: {
-      "cloudflare-ai-gateway": {
-        baseUrl: `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/compat`,
-        api: "openai-completions",
-        apiKey: "CLOUDFLARE_API_KEY",
-        headers: {
-          "cf-aig-authorization": "CLOUDFLARE_AUTHORIZATION",
-          "cf-aig-collect-log-payload": "false",
-        },
-        compat: {
-          supportsDeveloperRole: false,
-          supportsReasoningEffort: false,
-          maxTokensField: "max_tokens",
-        },
-        models: [{
-          id: "deepseek/deepseek-v4-flash",
-          name: "DeepSeek V4 Flash",
-          reasoning: false,
-          input: ["text"],
-          contextWindow: 128_000,
-          maxTokens: 16_384,
-        }],
-      },
-    },
-  }));
-  await selectedVm.writeFile(`${configDir}/settings.json`, JSON.stringify({
-    defaultProvider: "cloudflare-ai-gateway",
-    defaultModel: "deepseek/deepseek-v4-flash",
-  }));
+  for (const directory of template.directories) {
+    await selectedVm.mkdir(directory, { recursive: true });
+  }
+  for (const file of template.files) {
+    await selectedVm.writeFile(file.path, file.content);
+  }
   if (vm !== selectedVm || generation !== selectedGeneration) throw new Error("Runtime changed before the session was created");
-  await selectedVm.openSession({
-    sessionId,
-    agent: "pi",
-    cwd: "/workspace",
-    permissionPolicy: "allow_all",
-    additionalInstructions: "You are Egeria, a careful coding agent working inside an isolated agentOS sandbox. Make concrete progress, explain important decisions succinctly, and keep all project files under /workspace.",
-    env: {
-      HOME: home,
-      CLOUDFLARE_API_KEY: apiKey,
-      CLOUDFLARE_ACCOUNT_ID: accountId,
-      CLOUDFLARE_GATEWAY_ID: gatewayId,
-      CLOUDFLARE_AUTHORIZATION: `Bearer ${apiKey}`,
-    },
-  });
+  await selectedVm.openSession(template.session);
   if (vm !== selectedVm || generation !== selectedGeneration) return;
   await refreshSessions();
   await selectSession(sessionId);

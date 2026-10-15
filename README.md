@@ -81,6 +81,27 @@ The actor fails to start without one of these explicit security modes. Use
 `AGENTOS_ALLOW_UNAUTHENTICATED_LOCAL=1` only for loopback development; never set
 it on a remotely exposed actor.
 
+### Session policy and product boundaries
+
+The browser workspace is the Pi coding-agent mode. The original `bun run dev`
+notes/study assistant remains separate: its memory, tools, and Langfuse tracing
+are not automatically available to Pi.
+
+Both the browser and smoke client use `createSessionTemplate` from
+`src/agentos/index.ts`. It validates session names, Cloudflare URL path
+components, and tokens before provisioning, and owns the model configuration,
+instructions, environment allowlist, and permission policy. Each invocation gets
+a fresh Pi home directory; sessions within the same VM still share `/workspace`.
+Separate homes prevent configuration collisions, not access to other sessions'
+files. Session deletion does not erase the shared workspace or these home files.
+
+This remains a trusted, single-user workspace with `allow_all` permissions.
+The shared template is not server-side authorization: anyone holding the actor
+capability can execute commands and create sessions directly. Do not share a VM
+between untrusted users. Multi-user ownership and approval enforcement remain
+future work. Tokens are kept out of generated config files, but remain in the
+durable session environment until deletion; revoke tokens when erasure matters.
+
 ## Optional Langfuse tracing
 
 Egeria can send Vercel AI SDK model and tool telemetry to Langfuse. Set both

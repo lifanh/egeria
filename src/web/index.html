@@ -49,7 +49,7 @@
             <div class="orbital"><span>e</span></div>
             <p class="kicker">YOUR AGENT, INSIDE</p>
             <h2>A quiet place to build.</h2>
-            <p>Pi runs inside a durable agentOS VM, with its filesystem, processes, and tools available directly from your browser.</p>
+            <p>pi-durable saves conversations and resumes agent work inside your agentOS VM. Files, terminal commands, and note tools stay in the sandbox.</p>
             <div class="prompt-grid">
               <button type="button" data-prompt="Inspect the workspace and explain what is here."><strong>Explore the workspace</strong><span>Understand files, structure, and next steps →</span></button>
               <button type="button" data-prompt="Create a small, thoughtful project in this workspace. Start by proposing a concise plan."><strong>Start something new</strong><span>Plan and build inside the sandbox →</span></button>
@@ -96,7 +96,7 @@
         <div class="dialog-mark">E</div>
         <p class="kicker">AGENTOS CONNECTION</p>
         <h2>Enter the sandbox.</h2>
-        <p class="dialog-copy">The browser connects directly to your agentOS actor. Runtime coordinates are kept locally; provider credentials are sent only when creating a session and are never saved by this browser.</p>
+        <p class="dialog-copy">The browser connects to your agentOS actor and starts pi-durable inside the VM. Runtime coordinates are kept locally; gateway credentials stay in the VM, never in browser storage.</p>
         <label>Actor endpoint<input id="endpoint" name="endpoint" type="url" placeholder="http://localhost:6420" required /></label>
         <label>Durable VM ID<input id="vm-id" name="vmId" value="egeria-browser" required pattern="[a-zA-Z0-9._-]+" /></label>
         <label>Connection capability <span class="optional">remote only</span><input id="auth-token" name="authToken" type="password" autocomplete="off" /></label>
@@ -110,7 +110,7 @@
         <button class="dialog-close" value="cancel" type="submit" aria-label="Close">×</button>
         <p class="kicker">NEW DURABLE SESSION</p>
         <h2>Wake an agent.</h2>
-        <p class="dialog-copy">Cloudflare uses your stored DeepSeek provider key. The gateway token becomes part of this durable agent session; delete the session to remove it.</p>
+        <p class="dialog-copy">Cloudflare uses your stored DeepSeek provider key. pi-durable saves the conversation and gateway token in the VM so work can resume. Delete the session to remove both.</p>
         <label>Session name<input id="session-name" name="sessionName" placeholder="my-project" required pattern="(?!\.{1,2}$)[a-zA-Z0-9._-]+" /></label>
         <label>Cloudflare account ID<input id="account-id" name="accountId" required /></label>
         <label>Gateway ID<input id="gateway-id" name="gatewayId" value="default" required /></label>
@@ -125,7 +125,7 @@
         <button class="dialog-close" value="cancel" type="submit" aria-label="Close">×</button>
         <p class="kicker">DELETE SESSION</p>
         <h2>Remove this agent?</h2>
-        <p class="dialog-copy">This deletes the durable session and its stored Cloudflare environment. Files in the shared VM workspace remain.</p>
+        <p class="dialog-copy">This stops the agent and deletes its pi-durable transcript, checkpoints, and gateway credentials. Shared workspace files and notes remain.</p>
         <div class="delete-name" id="delete-session-name"></div>
         <div class="dialog-error" id="delete-error"></div>
         <button class="primary danger" id="delete-session-button" value="default" type="submit">Delete session and credentials</button>

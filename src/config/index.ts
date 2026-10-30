@@ -6,3 +6,4 @@
  */
 export { ConfigTag, type Config } from "./Config.ts";
 export { ConfigLive } from "./internal/env.ts";
+export { parseTimeouts, type Timeouts } from "./internal/timeouts.ts";

@@ -54,9 +54,11 @@ scaffold.
 
 ### Browser workspace
 
-Egeria also includes an orb-like browser workspace. The browser talks directly
-to the agentOS actor client: agent sessions, files, and terminal commands all run
-inside the durable VM rather than in the web server.
+Egeria's browser workspace uses **@earendil-works/pi-durable** for agent
+orchestration and **agentOS** for sandbox execution. The browser starts a bundled
+Node service inside the VM and calls it through agentOS's `vmFetch` transport.
+The web server only serves static assets; model calls, coding tools, notes,
+conversations, and checkpoints all stay inside the VM.
 
 ```bash
 # Terminal 1: actor runtime
@@ -72,10 +74,11 @@ expose both services through authenticated HTTPS portals and set
 that URL into the connection dialog). Remote deployments must also set a strong
 `AGENTOS_AUTH_TOKEN` on the actor service and enter it as the connection
 capability in the browser. The capability remains in memory; the browser stores
-only the endpoint and VM ID. Cloudflare credentials are not placed in local
-storage, but agentOS does retain the session environment as part of each durable
-session; use the session delete control to remove its token. Revoking the
-Cloudflare token remains the authoritative response when secure erasure matters.
+only the endpoint and VM ID. Cloudflare credentials are not placed in browser
+storage. The VM stores each session's gateway token in a private `config.json`
+alongside its journal so interrupted work can resume. Deleting a session stops
+its agent and removes its configuration and journal. Revoking the Cloudflare
+token remains the authoritative response when secure erasure matters.
 
 The actor fails to start without one of these explicit security modes. Use
 `AGENTOS_ALLOW_UNAUTHENTICATED_LOCAL=1` only for loopback development; never set
@@ -83,37 +86,52 @@ it on a remotely exposed actor.
 
 ### Session policy and product boundaries
 
-The browser workspace is the Pi coding-agent mode. The original `bun run dev`
-notes/study assistant shares its memory implementation and validated note tools
-with Pi. Its host-side notes and Langfuse tracing are not automatically copied
-into the VM.
+The browser uses `src/workspace/index.ts`, not agentOS's Pi session/prompt APIs.
+Each session owns a pi-durable harness backed by append-only JSONL storage under
+`/home/agentos/.egeria/sessions/<name>/journal`. JSONL avoids native SQLite
+bindings in the virtual Node runtime; its in-memory index grows with history.
+One VM-local service owns all harnesses, and acquires port 4318 before opening
+storage to prevent concurrent writers. Do not expose this port directly: access
+goes through the authenticated actor capability.
 
-Both the browser and smoke client use `createSessionTemplate` from
-`src/agentos/index.ts`. It validates session names, Cloudflare URL path
-components, and tokens before provisioning, and owns the model configuration,
-instructions, environment allowlist, and permission policy. Each invocation gets
-a fresh Pi home directory; sessions within the same VM still share `/workspace`.
-Separate homes prevent configuration collisions, not access to other sessions'
-files. Session deletion does not erase the shared workspace or these home files.
+New sessions publish their configuration with an atomic directory rename.
+Recovery skips incomplete or damaged sessions and logs `workspace.session.unavailable`
+without deleting their data or blocking healthy sessions. Interrupted staging
+directories stay outside the session scan and can be removed after inspection.
 
-This remains a trusted, single-user workspace with `allow_all` permissions.
-The shared template is not server-side authorization: anyone holding the actor
-capability can execute commands and create sessions directly. Do not share a VM
-between untrusted users. Multi-user ownership and approval enforcement remain
-future work. Tokens are kept out of generated config files, but remain in the
-durable session environment until deletion; revoke tokens when erasure matters.
+Closing or reloading the browser does not cancel an accepted run. Reconnecting
+starts the service if needed and resumes unfinished work from stored checkpoints.
+Submission request IDs prevent duplicate admission. Unsafe interrupted tools are
+not automatically replayed. Runs execute at most five tools, with a friendly
+limit notice. Set `LLM_TIMEOUT_MS` and `TOOL_TIMEOUT_MS` on the web service;
+validated values are passed into the VM at startup (defaults: thirty and ten
+seconds). The model deadline covers the complete stream, including stalled
+response bodies, and aborts the provider request. Automatic pi-durable compaction
+bounds model context, not the stored transcript. Structured plan/action/observation
+logs omit content.
+
+`bun run web` builds the service automatically. Builds are fingerprinted; if a
+VM already runs another build or different timeout settings, stop that durable
+Node process through agentOS before reconnecting to upgrade. Existing agentOS Pi
+sessions are left untouched and are not imported into the new browser session
+list. They remain accessible through the legacy agentOS APIs.
+
+The original `bun run dev` assistant and `bun run agentos:client` smoke client
+are unchanged. The latter still uses `createSessionTemplate` and the older Pi
+extension. Host-side notes and Langfuse tracing are not copied into the VM.
+
+This remains a trusted, single-user workspace. Anyone holding the actor
+capability can execute code and read VM files, including other sessions' tokens.
+The coding tools are not an authorization boundary. Do not share a VM between
+untrusted users. Deleting a session leaves shared workspace files and notes;
+revoking its token is necessary when secure erasure matters.
 
 ### Persistent notes in Pi
 
-New browser and smoke-client sessions install a bundled CommonJS Pi extension
-in their own `$HOME/.pi/agent/extensions/egeria-memory.cjs` before opening the
-session. `bun run web` builds and serves this extension automatically;
-`bun run agentos:client` builds it before provisioning. Existing sessions do not
-upgrade automatically: create a new session to load the current extension.
-
-Pi gains the same `writeNote`, `readNotes`, and `searchNotes` tools as the CLI.
-Before each prompt, keyword recall adds matching excerpts and filenames to Pi's
-system context, marked as reference data rather than instructions. Recall errors
+The browser's pi-durable registry installs the same `writeNote`, `readNotes`,
+and `searchNotes` tools as the CLI, alongside the built-in read/write/edit/bash
+coding tools. Before each model request, keyword recall adds matching excerpts
+and filenames to system context, marked as reference data rather than instructions. Recall errors
 produce an explicit unavailable notice rather than silently claiming success.
 No vector database is used.
 
@@ -196,6 +214,7 @@ src/
   llm/             # public: generate(request)
   config/          # public: validated Config
   runtime/         # composed Effect layers
+  workspace/       # pi-durable browser sessions hosted inside the agentOS VM
   shared/          # errors, ids, logging
 ```
 

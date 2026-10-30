@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { timeoutSchema } from "./timeouts.ts";
 
 const optionalNonEmptyString = z.preprocess(
   (value) => (value === "" ? undefined : value),
@@ -24,8 +25,7 @@ export const envSchema = z
     API_KEY: z.string().min(1),
     NOTES_DIR: z.string().min(1).default("./notes"),
     MAX_AGENT_STEPS: z.coerce.number().int().positive().default(5),
-    LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-    TOOL_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+    ...timeoutSchema.shape,
     GOOGLE_VERTEX_PROJECT: optionalNonEmptyString,
     GOOGLE_VERTEX_LOCATION: optionalNonEmptyString,
     LANGFUSE_PUBLIC_KEY: optionalNonEmptyString,

@@ -1,3 +1,8 @@
+import { Effect } from "effect";
+import { parseTimeouts } from "../config/index.ts";
+
+const timeouts = Effect.runSync(parseTimeouts(process.env));
+
 const appBuild = await Bun.build({
   entrypoints: [new URL("./app.ts", import.meta.url).pathname],
   target: "browser",
@@ -5,14 +10,17 @@ const appBuild = await Bun.build({
   sourcemap: "linked",
 });
 
-const memoryBuild = await Bun.build({
-  entrypoints: [new URL("../agentos/memory-extension.ts", import.meta.url).pathname],
+const durableBuild = await Bun.build({
+  entrypoints: [new URL("../workspace/server.ts", import.meta.url).pathname],
   target: "node",
   format: "cjs",
   minify: true,
 });
-if (!memoryBuild.success) throw new Error("Failed to build the Egeria memory extension");
-const memoryExtension = await memoryBuild.outputs[0]!.text();
+if (!durableBuild.success) {
+  for (const log of durableBuild.logs) console.error(log);
+  throw new Error("Failed to build the pi-durable workspace service");
+}
+const durableService = await durableBuild.outputs[0]!.text();
 
 if (!appBuild.success) {
   for (const log of appBuild.logs) console.error(log);
@@ -31,7 +39,7 @@ const port = Number(process.env.PORT ?? 3000);
 Bun.serve({
   port,
   routes: {
-    "/egeria-memory.cjs": new Response(memoryExtension, {
+    "/egeria-durable.cjs": new Response(durableService, {
       headers: { "content-type": "text/javascript; charset=utf-8" },
     }),
     "/": new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } }),
@@ -47,6 +55,7 @@ Bun.serve({
     "/runtime-config": Response.json({
       agentOsEndpoint: process.env.AGENTOS_PUBLIC_ENDPOINT ?? null,
       vmId: process.env.AGENTOS_VM_ID ?? "egeria-browser",
+      timeouts,
     }),
   },
   fetch() {

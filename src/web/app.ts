@@ -1,9 +1,10 @@
 import { createClient } from "@rivet-dev/agentos/client";
 import { Effect } from "effect";
-import { createSessionTemplate, type registry } from "../agentos/index.ts";
+import type { registry } from "../agentos/index.ts";
+import type { Timeouts } from "../config/index.ts";
+import { connectWorkspace, type Workspace, type WorkspaceSession, type WorkspaceHistory } from "../workspace/index.ts";
 
-type Vm = ReturnType<ReturnType<typeof createClient<typeof registry>>["vm"]["getOrCreate"]>;
-type Session = Awaited<ReturnType<Vm["listSessions"]>>["sessions"][number];
+type Vm = ReturnType<ReturnType<ReturnType<typeof createClient<typeof registry>>["vm"]["getOrCreate"]>["connect"]>;
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const sessionsElement = byId<HTMLElement>("sessions");
@@ -35,7 +36,8 @@ try {
 `;
 
 let vm: Vm | undefined;
-let sessions: Session[] = [];
+let workspace: Workspace | undefined;
+let sessions: WorkspaceSession[] = [];
 let activeSessionId: string | undefined;
 let busy = false;
 let generation = 0;
@@ -76,15 +78,6 @@ function clearFiles() {
   byId("file-content").textContent = "";
 }
 
-function textFromContent(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  return content.flatMap((block) => {
-    if (!block || typeof block !== "object") return [];
-    const value = block as { type?: string; text?: string };
-    return value.type === "text" && value.text ? [value.text] : [];
-  }).join("");
-}
-
 function addMessage(role: "user" | "agent" | "system", text: string) {
   const article = document.createElement("article");
   article.className = `message ${role}`;
@@ -116,9 +109,9 @@ function renderSessions() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `session-item${session.sessionId === activeSessionId ? " active" : ""}`;
-    const status = session.state.status === "running" ? "working" : session.state.status;
+    const status = session.status === "running" ? "working" : session.status;
     button.innerHTML = `<span class="session-icon">◇</span><span><strong></strong><small></small></span>`;
-    button.querySelector("strong")!.textContent = session.title || session.sessionId;
+    button.querySelector("strong")!.textContent = session.sessionId;
     button.querySelector("small")!.textContent = `${status} · ${new Date(session.updatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}`;
     button.addEventListener("click", () => {
       closeMobileMenu();
@@ -130,7 +123,7 @@ function renderSessions() {
     remove.title = `Delete ${session.sessionId}`;
     remove.textContent = "×";
     remove.addEventListener("click", () => {
-      byId("delete-session-name").textContent = session.title || session.sessionId;
+      byId("delete-session-name").textContent = session.sessionId;
       deleteDialog.dataset.sessionId = session.sessionId;
       deleteDialog.showModal();
     });
@@ -140,13 +133,13 @@ function renderSessions() {
 }
 
 async function loadHistory() {
-  if (!vm || !activeSessionId) return;
+  if (!vm || !workspace || !activeSessionId) return;
   const selectedVm = vm;
   const selectedSessionId = activeSessionId;
   const selectedGeneration = generation;
-  let history: Awaited<ReturnType<Vm["readHistory"]>>;
+  let history: WorkspaceHistory;
   try {
-    history = await selectedVm.readHistory({ sessionId: selectedSessionId, limit: 500 });
+    history = await Effect.runPromise(workspace.history(selectedSessionId));
   } catch (error) {
     if (vm !== selectedVm || activeSessionId !== selectedSessionId || generation !== selectedGeneration) return;
     messagesElement.replaceChildren();
@@ -155,28 +148,33 @@ async function loadHistory() {
   }
   if (vm !== selectedVm || activeSessionId !== selectedSessionId || generation !== selectedGeneration) return;
   messagesElement.replaceChildren();
-  const rendered: Array<{ role: "user" | "agent"; id: string; text: string }> = [];
-
-  for (const event of history.events) {
-    if (event.type !== "user_message_chunk" && event.type !== "agent_message_chunk") continue;
-    const role = event.type === "user_message_chunk" ? "user" : "agent";
-    const update = event as { content?: { type?: string; text?: string }; messageId?: string; sequence: number };
-    if (update.content?.type !== "text") continue;
-    const id = update.messageId ?? `${role}-${update.sequence}`;
-    const previous = rendered.at(-1);
-    if (previous?.role === role && (previous.id === id || !update.messageId)) previous.text += update.content.text ?? "";
-    else rendered.push({ role, id, text: update.content.text ?? "" });
-  }
-  if (history.hasMoreBefore) addMessage("system", "Older session history is omitted.");
-  for (const message of rendered) if (message.text.trim()) addMessage(message.role, message.text.trim());
+  if (history.truncated) addMessage("system", "Older session history is omitted.");
+  for (const message of history.messages) addMessage(message.role, message.text);
+  if (history.failure) addMessage("system", history.failure);
+  if (history.status === "running") addMessage("system", "pi-durable is working inside the sandbox…");
+  sendButton.disabled = history.status === "running";
   welcome.hidden = messagesElement.childElementCount > 0;
+  return history;
+}
+
+async function followHistory() {
+  const selectedGeneration = generation;
+  do {
+    const history = await loadHistory();
+    if (generation !== selectedGeneration || !history) return;
+    if (history.status !== "running") {
+      await Promise.all([refreshSessions(), refreshFiles()]);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  } while (generation === selectedGeneration);
 }
 
 async function selectSession(sessionId: string) {
   generation += 1;
   activeSessionId = sessionId;
   const session = sessions.find((item) => item.sessionId === sessionId);
-  byId("session-title").textContent = session?.title || sessionId;
+  byId("session-title").textContent = session?.sessionId || sessionId;
   renderSessions();
   messagesElement.replaceChildren();
   addMessage("system", "Loading session history…");
@@ -185,26 +183,17 @@ async function selectSession(sessionId: string) {
   promptInput.disabled = false;
   sendButton.disabled = false;
   byId<HTMLInputElement>("terminal-command").disabled = false;
-  await Promise.all([loadHistory(), refreshFiles()]);
+  void followHistory();
+  await refreshFiles();
   promptInput.focus();
 }
 
 async function refreshSessions(selectNewest = false) {
-  if (!vm) return;
+  if (!vm || !workspace) return;
   const selectedVm = vm;
   const selectedGeneration = generation;
-  const allSessions: Session[] = [];
-  const seenCursors = new Set<string>();
-  let cursor: string | undefined;
-  do {
-    const page = await selectedVm.listSessions({ cursor, limit: 100 });
-    if (vm !== selectedVm || generation !== selectedGeneration) return;
-    allSessions.push(...page.sessions);
-    if (!page.nextCursor) break;
-    if (seenCursors.has(page.nextCursor)) throw new Error("agentOS returned a repeated session cursor");
-    seenCursors.add(page.nextCursor);
-    cursor = page.nextCursor;
-  } while (true);
+  const allSessions = await Effect.runPromise(workspace.listSessions());
+  if (vm !== selectedVm || generation !== selectedGeneration) return;
   sessions = allSessions.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
   renderSessions();
   if (selectNewest && sessions[0]) await selectSession(sessions[0].sessionId);
@@ -224,11 +213,26 @@ async function connect(endpoint: string, vmId: string) {
   const client = createClient<typeof registry>({ endpoint });
   const token = byId<HTMLInputElement>("auth-token").value;
   if (!isLoopback && !token) throw new Error("Remote agentOS endpoints require a connection capability");
-  const candidate = client.vm.getOrCreate(vmId, { params: token ? { token } : {} });
-  await candidate.listAgents();
+  // Persistent RPC avoids streaming HTTP uploads unsupported by browsers over HTTP/1.1.
+  const candidate = client.vm.getOrCreate(vmId).connect(token ? { token } : {});
+  let candidateWorkspace: Workspace;
+  try {
+    await candidate.listAgents();
+    const bundle = await fetch("/egeria-durable.cjs");
+    if (!bundle.ok) throw new Error("Could not load the pi-durable workspace service");
+    const runtimeConfig = await fetch("/runtime-config");
+    if (!runtimeConfig.ok) throw new Error("Could not load the workspace timeout configuration");
+    const { timeouts } = await runtimeConfig.json() as { timeouts: Timeouts };
+    candidateWorkspace = await Effect.runPromise(connectWorkspace(candidate, await bundle.text(), timeouts));
+  } catch (error) {
+    await candidate.dispose();
+    throw error;
+  }
   byId<HTMLInputElement>("auth-token").value = "";
   generation += 1;
+  await vm?.dispose();
   vm = candidate;
+  workspace = candidateWorkspace;
   activeSessionId = undefined;
   sessions = [];
   messagesElement.replaceChildren();
@@ -248,31 +252,19 @@ async function connect(endpoint: string, vmId: string) {
 }
 
 async function createSession(sessionId: string, accountId: string, gatewayId: string, apiKey: string) {
-  if (!vm) throw new Error("Connect to agentOS first");
+  if (!vm || !workspace) throw new Error("Connect to agentOS first");
   if (sessions.some((session) => session.sessionId === sessionId)) throw new Error("A session with this name already exists");
 
   const selectedVm = vm;
   const selectedGeneration = generation;
-  const response = await fetch("/egeria-memory.cjs");
-  if (!response.ok) throw new Error("Could not load the Egeria memory extension");
-  const memoryExtension = await response.text();
-  const template = Effect.runSync(createSessionTemplate({ sessionId, accountId, gatewayId, apiKey, memoryExtension }));
-  if (vm !== selectedVm || generation !== selectedGeneration) throw new Error("Runtime changed before provisioning");
-  for (const directory of template.directories) {
-    await selectedVm.mkdir(directory, { recursive: true });
-  }
-  for (const file of template.files) {
-    await selectedVm.writeFile(file.path, file.content);
-  }
-  if (vm !== selectedVm || generation !== selectedGeneration) throw new Error("Runtime changed before the session was created");
-  await selectedVm.openSession(template.session);
+  await Effect.runPromise(workspace.createSession({ sessionId, accountId, gatewayId, apiKey }));
   if (vm !== selectedVm || generation !== selectedGeneration) return;
   await refreshSessions();
   await selectSession(sessionId);
 }
 
 async function sendPrompt(text: string) {
-  if (!vm || !activeSessionId || busy || !text.trim()) return;
+  if (!vm || !workspace || !activeSessionId || busy || !text.trim()) return;
   busy = true;
   const selectedVm = vm;
   const selectedSessionId = activeSessionId;
@@ -284,16 +276,10 @@ async function sendPrompt(text: string) {
   const pending = addMessage("system", "Agent is working inside the sandbox…");
   sendButton.disabled = true;
   try {
-    const result = await selectedVm.prompt({
-      sessionId: selectedSessionId,
-      idempotencyKey: crypto.randomUUID(),
-      content: [{ type: "text", text: text.trim() }],
-    });
+    await Effect.runPromise(workspace.submit(selectedSessionId, text.trim(), crypto.randomUUID()));
     if (vm !== selectedVm || activeSessionId !== selectedSessionId || generation !== selectedGeneration) return;
     pending.remove();
-    const response = textFromContent(result.message?.content);
-    addMessage("agent", response || `The turn stopped with ${result.stopReason}.`);
-    await Promise.all([refreshSessions(), refreshFiles()]);
+    await followHistory();
   } catch (error) {
     if (vm !== selectedVm || activeSessionId !== selectedSessionId || generation !== selectedGeneration) return;
     pending.remove();
@@ -428,14 +414,14 @@ byId<HTMLFormElement>("delete-form").addEventListener("submit", async (event) =>
   const submitter = (event as SubmitEvent).submitter as HTMLButtonElement | null;
   if (submitter?.value === "cancel") return deleteDialog.close();
   const sessionId = deleteDialog.dataset.sessionId;
-  if (!vm || !sessionId) return;
+  if (!vm || !workspace || !sessionId) return;
   const selectedVm = vm;
   const selectedGeneration = generation;
   const button = byId<HTMLButtonElement>("delete-session-button");
   byId("delete-error").textContent = "";
   button.disabled = true;
   try {
-    await selectedVm.deleteSession({ sessionId });
+    await Effect.runPromise(workspace.deleteSession(sessionId));
     if (vm !== selectedVm || generation !== selectedGeneration) return;
     if (activeSessionId === sessionId) {
       generation += 1;
